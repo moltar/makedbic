@@ -1,0 +1,437 @@
+#!/usr/bin/perl
+
+use warnings;
+use strict;
+
+use ExtUtils::ModuleMaker;
+use ExtUtils::ModuleMaker::TT::DBIx::Class;
+use Getopt::Long::Descriptive;
+use Config::Find;
+use Config::General;
+use Path::Class;
+use Data::Dumper;
+
+my ($opt, $usage) = describe_options(
+    "%c [ -c config_file ] -s My::App::Schema -r Artist,CD,Track [ --base --resultsets ]\n",
+
+    ['config|c:s'        => 'Configuration file.'],
+    ['defaults|d:s'      => 'Create a default configuration file and print its location.'],
+    ['locate-config|l:s' => 'Prints the location of the named config file, or the default if config is not given.'],
+    ['templates|t:s'     => 'Dump template directory skeleton.'],
+    ['schema|s=s'        => 'Schema class name (e.g. MyDatabase::Main).'],
+    ['results|r=s'       => 'Comma separated Result class names (e.g. Artist,CD,Track).'],
+    ['base|b'            => 'Create base classes for Result and ResultSet.'],
+    ['resultsets|e'      => 'Create corresponding ResultSet classes.'],
+    ['column|m:s'        => 'Output code for a single column.'],
+    ['version|v'         => 'Print version and exit.'],
+    ['help|h'            => 'Help'],
+);
+
+# Find config file if specified or use the default
+my $config_file = find_config($opt->config);
+
+# Throw an error if config file was requested and not found.
+die sprintf("Config file '%s' could not be read. Aborting.\n", $opt->config)
+    if defined $opt->config && ! -e $config_file;
+    
+# if the default doesn't exist, undef gives a null config
+my $config = Config::General->new( 
+    '-ConfigFile' => -e $config_file ? $config_file : undef,
+    '-AutoTrue'   => 1,
+);
+
+SWITCH: for(1) {
+    # --help
+    if ($opt->help) {
+        print $usage->text;
+        last;
+    }
+    
+    # --version
+    if ($opt->version) {
+        printf "%s is %s\n",
+            file($0)->basename,
+            $ExtUtils::ModuleMaker::TT::DBIx::Class::VERSION;
+        last;
+    }
+    
+    # --defaults
+    if (defined $opt->defaults) {
+        my $mod = ExtUtils::ModuleMaker->new(
+            ALT_BUILD => 'ExtUtils::ModuleMaker::TT::DBIx::Class',
+            $config->getall,
+            NAME => 'fake',
+        ) or die "Couldn't create ExtUtils::ModuleMaker object";
+
+        my $defaults = $mod->default_values();
+        my $config_file = find_config($opt->defaults);
+        $config_file->dir->mkpath;
+        $config->save_file($config_file, $defaults);
+
+        print "$config_file\n";
+
+        last;
+    }
+
+    # --locate-config
+    if (defined $opt->locate_config) {
+        my $target = $opt->locate_config ? $opt->locate_config : 'default';
+        print find_config($target), "\n";
+
+        last;
+    }
+    
+    # --templates
+    if ($opt->templates) {
+        my $mod = ExtUtils::ModuleMaker->new( 
+            ALT_BUILD => 'ExtUtils::ModuleMaker::TT::DBIx::Class',
+            $config->getall,
+            NAME => 'fake',
+        ) or die "Couldn't create ExtUtils::ModuleMaker object";
+        $mod->create_template_directory($opt->templates);
+
+        last;
+    }
+
+    # --column
+    if ($opt->column) {
+        my $mod = ExtUtils::ModuleMaker->new(
+            $config->getall, 
+            NAME      => 'fake',
+            ALT_BUILD => 'ExtUtils::ModuleMaker::TT::DBIx::Class',
+        );
+        
+        foreach my $col (split(/\s*,\s*/, $opt->column)) {
+            print $mod->build_single_column($col);
+        }
+        
+        last;
+    }
+
+    # --schema
+    if ($opt->schema) {
+        my $schema = $opt->schema;
+        my @extra_modules = ();
+        my @results_classes = split(/\s*,\s*/, $opt->results);
+
+        if ($opt->base) {
+            push @extra_modules, {
+                DBIC_MODULE_TYPE => 'base_result',
+                NAME => join('::', $schema, 'Result'),
+            };
+            push @extra_modules, {
+                DBIC_MODULE_TYPE => 'base_resultset',
+                NAME => join('::', $schema, 'ResultSet'),
+            } if $opt->resultsets;
+        }
+
+        foreach my $class (@results_classes) {
+            push @extra_modules, {
+                DBIC_MODULE_TYPE => 'result',
+                DBIC_BASE => $opt->base ? join('::', $schema, 'Result') : 'DBIx::Class',
+                NAME => join('::', $schema, 'Result', $class),
+            };
+        }
+
+        if ($opt->resultsets) {
+            foreach my $class (@results_classes) {
+                push @extra_modules, {
+                    DBIC_MODULE_TYPE => 'resultset',
+                    DBIC_BASE => $opt->base ? join('::', $schema, 'ResultSet') : 'DBIx::Class::ResultSet',
+                    NAME => join('::', $schema, 'ResultSet', $class),
+                };
+            }
+        }
+
+        my $mod = ExtUtils::ModuleMaker->new(
+            ALT_BUILD => 'ExtUtils::ModuleMaker::TT::DBIx::Class',
+            VERBOSE => 1,
+            INCLUDE_SCRIPTS_DIRECTORY => 0,
+            COMPACT => 1,
+            $config->getall,
+            TEST_NAME_DERIVED_FROM_MODULE_NAME => 1,
+            NAME    => $opt->schema,
+            EXTRA_MODULES  => \@extra_modules,
+            DBIC_MODULE_TYPE => 'main',
+            DBIC_RESULTS_CLASSES => \@results_classes,
+        );
+
+        $mod->complete_build;
+        
+        last;
+    }
+    
+    print $usage->text;
+}
+
+sub find_config {
+    my $filename = shift;
+
+    my $program_name = file($0)->basename;
+    my $config_file;
+    if ($filename) {
+        if (file($filename)->is_absolute) {
+            $config_file = file($filename);
+        } else {
+            $config_file = file(
+                Config::Find->find(
+                    names => [
+                        "${program_name}/$filename",
+                        ".makedbic/$filename",
+                    ],
+                    mode => 'w',
+                )
+            );
+        }
+    } else {
+        $config_file = file(
+            Config::Find->find( 
+                names => [
+                    "${program_name}/default",
+                    ".makedbic/default",
+                ],
+                mode => 'w',
+            )
+        );
+    }
+
+    return $config_file;
+}
+
+exit;
+
+__END__
+
+=head1 NAME
+
+makedbic - Perl program for creating skeleton modules for DBIx::Class schemas
+
+=head1 SYNOPSIS
+  
+ makedbic [ -c config_file ] -s My::App::Schema -r Artist,CD,Track
+
+=head1 DESCRIPTION
+
+This program is a front-end to L<ExtUtils::ModuleMaker::TT::DBIx::Class>. It 
+supports:
+
+=over
+
+=item *
+
+reading/writing a configuration file
+
+=item *
+
+generating a directory of default templates
+
+=item *
+
+building new schema distribution directories
+
+=item *
+
+printing a skeleton Result column to STDOUT
+
+=back
+
+=head1 OPTIONS
+
+=head2 Mode Options
+
+=over
+
+=item -c F<[CONFIG]> or --config F<[CONFIG]>
+
+Supply an alternative config file. See L</CONFIGURATION FILES> below for
+details.
+
+=item -d F<[CONFIG]> or --defaults F<[CONFIG]>
+
+Writes out default options from ExtUtils::ModuleMaker to the given file in
+"Apache" config format. Use to create a new base for a custom config file.
+CONFIG is either a short configuration name or an absolute path to a file. A
+default value is used if CONFIG is not given. See L</CONFIGURATION FILES> below
+for details. This option prints the location of the config file on completion.
+
+=item -l F<[CONFIG]> or --locate-config F<[CONFIG]>
+
+Prints the location of the named config file, or the default if CONFIG is not
+given. Helpful for finding the right config file to edit. See
+L</CONFIGURATION FILES> below for details.
+
+=item -t F<DIRECTORY> or --templates F<DIRECTORY>
+
+Creates F<DIRECTORY> if it doesn't exist and writes all default templates as
+separate files in that directory for subsequent user customization. You may add
+a TEMPLATE_DIR option with F<DIRECTORY> to your custom config file to use 
+this as a custom template directory.
+
+=item -s I<My::App::Schema> or --schema I<My::App::Schema>
+
+Creates a skeleton distribution for My::App::Schema. Directory name will be 
+determined by the COMPACT option set in the config file.
+
+=item -r I<Artist,CD,Track> or --results I<Artist,CD,Track>
+
+A list of comma separated Result class names. A separate Result class and a test
+file will be created for each one.
+
+=item -e or --resultsets
+
+Creates ResultSet class for each Result class above.
+
+=item -b or --base
+
+Create parent classes for Result and ResultSet classes and inherit from them.
+
+=item -m I<COLUMN_NAME> or --column I<COLUMN_NAME>
+
+Prints to STDOUT a skeleton for a single Result column.  Most useful when called
+from within an editor to insert code. You may supply a comma separated list to
+create several columns at once. See EXAMPLES.
+
+=item -v or --version
+
+Prints version information and current configuration settings (either default or 
+from a -c option)
+
+=item -h or --help
+
+Prints usage information
+
+=back
+
+=head1 CONFIGURATION FILES
+
+=head2 Overview
+
+makedbic has a multi-level configuration system. Options that control creation
+of a skeleton distribution are processed as follows, with each subsequent
+source extending or overriding the previous one:
+
+=over
+
+=item 1. Built-in defaults to ExtUtils::ModuleMaker
+
+=item 2. Defaults specified in an ExtUtils::ModuleMaker::Personal::Defaults
+file
+
+=item 3. makedbic built-in defaults (I<COMPACT> style and  
+ExtUtils::ModuleMaker::TT::DBIx::Class as the I<ALT_BUILD>)
+
+=item 4. makedbic config file, either the default one or one specified
+on the command line with the C<--config> option
+
+=back
+
+This preserves maximum flexibility and compatibility with the personal 
+defaults system in ExtUtils::ModuleMaker. makedbic allows one or 
+more additional configuration files to customize those defaults for 
+special purposes.
+
+Generally, static information like I<AUTHOR> should probably go in the
+ExtUtils::ModuleMaker::Personal::Defaults file. I<TEMPLATE_DIR> could 
+go in the makedbic config files to allow for different templates to
+be used for different projects.
+
+=head2 Config file locations
+
+The directory for config files is located in an operating system-specific
+fashion using L<Config::Find>.  For example, this is typically
+C<~/.makedbic/> on Unix-based systems or something in a C<makedbic>
+directory located somewhere under C<C:\Documents and Settings\Username\> on
+Windows.
+
+If no config file is specified, the default is 'default.conf'.  Short
+config names are found in the operating system specific directory with
+a '.conf' extension.  If an absolute file pathname is given, that is 
+used directly.  'makedbic -l CONFIG' will always show how a given
+CONFIG option is interpreted by makedbic.  For example, on Linux:
+
+ $ makedbic -l
+ /home/roman/.makedbic/default.conf
+
+ $ makedbic -l default
+ /home/roman/.makedbic/default.conf
+
+ $ makedbic -l freelance
+ /home/roman/.makedbic/freelance.conf
+
+ $ makedbic -l /etc/makedbic/corp/std.conf
+ /etc/makedbic/corp/std.conf
+ 
+=head1 EXAMPLES
+
+Create a custom configuration file
+
+    makedbic -d 
+
+Create a custom template directory
+
+    makedbic -t ~/.makedbic.templates
+ 
+Edit the custom configuration file. Set AUTHOR and other defaults as desired.
+Set TEMPLATE_DIR to the templates directory (e.g. ~/.makedbic.templates ) to
+use your own custom templates in place of the defaults.
+
+Create a new schema distribution:
+
+    makedbic -s My::App::Schema -r Artist,CD,Track
+
+Create a new schema distribution with ResultSet and parent classes:
+
+    makedbic -s My::App::Schema -r Artist,CD,Track -e -b
+
+From within an editor, insert a new subroutine skeleton.  E.g. from within
+vi:
+
+    :r! makedbic -m artistid
+
+Or insert several subroutines:
+
+    :r! makedbic -s trackid,cd,title
+ 
+=head1 SEE ALSO
+
+=over
+
+=item *
+
+L<ExtUtils::ModuleMaker>
+
+=item *
+
+L<ExtUtils::ModuleMaker::TT>
+
+=item *
+
+L<ExtUtils::ModuleMaker::TT::DBIx::Class>
+
+=item *
+
+L<DBIx::Class>
+
+=back
+
+=head1 BUGS
+
+Please report bugs using the CPAN Request Tracker at L<http://rt.cpan.org/>
+
+=head1 AUTHOR
+
+Roman F. (ROMANF)
+
+romanf@cpan.org
+
+=head1 COPYRIGHT
+
+Copyright (c) 2010 by Roman F.
+
+This program is free software; you can redistribute
+it and/or modify it under the same terms as Perl itself.
+
+The full text of the license can be found in the
+LICENSE file included with this module.
+
+=cut

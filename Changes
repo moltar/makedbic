@@ -1,0 +1,4 @@
+Revision history for Perl module ExtUtils::ModuleMaker::TT::DBIx::Class
+
+0.01 Sun Nov 21 14:43:59 2010
+    - original skeleton created with ExtUtils::ModuleMaker::TT
