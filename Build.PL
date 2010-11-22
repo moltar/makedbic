@@ -7,8 +7,13 @@ Module::Build->new(
     license             => 'perl',
     create_readme       => 1,
     create_makefile_pl  => 'traditional',
-    requires        => {
-        # module requirements here
+    requires            => {
+        ExtUtils::ModuleMaker => 0.51,
+        ExtUtils::ModuleMaker::TT => 0.93,
+        Getopt::Long::Descriptive => 0.086,
+        Config::Find => 0.26,
+        Config::General => 2.49,
+        Path::Class => 0.21,
     },
     build_requires  => { 
         Test::Simple => 0.44,

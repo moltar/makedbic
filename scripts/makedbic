@@ -9,7 +9,6 @@ use Getopt::Long::Descriptive;
 use Config::Find;
 use Config::General;
 use Path::Class;
-use Data::Dumper;
 
 my ($opt, $usage) = describe_options(
     "%c [ -c config_file ] -s My::App::Schema -r Artist,CD,Track [ --base --resultsets ]\n",
