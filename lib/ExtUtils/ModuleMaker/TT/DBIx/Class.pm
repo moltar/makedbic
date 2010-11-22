@@ -184,6 +184,7 @@ EOF
 
 $ExtUtils::ModuleMaker::TT::templates{'module_main.pm'} = <<"EOF";
 package [% NAME %];
+use 5.008008;
 use strict;
 use warnings;
 
