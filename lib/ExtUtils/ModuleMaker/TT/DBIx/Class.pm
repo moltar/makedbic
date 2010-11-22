@@ -7,7 +7,7 @@ use Carp;
 BEGIN {
     use Exporter ();
     use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-    use version 0.77; our $VERSION = version->declare('v0.1.0');
+    use version 0.77; our $VERSION = version->declare('v0.1.1');
     @ISA         = qw(Exporter);
     @EXPORT      = qw();
     @EXPORT_OK   = qw();
@@ -186,7 +186,8 @@ $ExtUtils::ModuleMaker::TT::templates{'module_main.pm'} = <<"EOF";
 package [% NAME %];
 use strict;
 use warnings;
-use version 0.77; our \$VERSION = version->declare('v0.1.0');
+
+our $VERSION = 0.001000;
 
 use base qw/DBIx::Class::Schema/;
 
@@ -241,7 +242,7 @@ use warnings;
 
 $MODULE_HEADER
 
-use base qw/DBIx::Class/;
+use base qw/DBIx::Class::Core/;
 
 $MODULE_FOOTER
 EOF
@@ -275,7 +276,6 @@ Module::Build->new(
     create_readme       => 1,
     create_makefile_pl  => 'traditional',
     requires            => {
-        'version' => '0.77',
         'DBIx::Class' => 0,
     },
     build_requires      => {
@@ -298,7 +298,6 @@ WriteMakefile(
     AUTHOR       => '[% AUTHOR %] ([% EMAIL %])',
     ABSTRACT     => '[% ABSTRACT %]',
     PREREQ_PM    => {
-        'version' => '0.77',
         'DBIx::Class' => 0,
         'Test::More' => 0,
         'Test::DBIx::Class' => 0,

@@ -127,7 +127,7 @@ SWITCH: for(1) {
         foreach my $class (@results_classes) {
             push @extra_modules, {
                 DBIC_MODULE_TYPE => 'result',
-                DBIC_BASE => $opt->base ? join('::', $schema, 'Result') : 'DBIx::Class',
+                DBIC_BASE => $opt->base ? join('::', $schema, 'Result') : 'DBIx::Class::Core',
                 NAME => join('::', $schema, 'Result', $class),
             };
         }
