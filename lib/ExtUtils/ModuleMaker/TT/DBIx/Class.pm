@@ -7,7 +7,7 @@ use Carp;
 BEGIN {
     use Exporter ();
     use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-    use version 0.77; our $VERSION = version->declare('v0.1.1');
+    use version 0.77; our $VERSION = version->declare('v0.1.2');
     @ISA         = qw(Exporter);
     @EXPORT      = qw();
     @EXPORT_OK   = qw();
