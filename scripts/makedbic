@@ -82,6 +82,11 @@ SWITCH: for(1) {
     
     # --templates
     if ($opt->templates) {
+        if (-e $opt->templates) {
+            print "Error: template directory already exists. Please delete or rename it first.\n";
+            exit(1);
+        }
+
         my $mod = ExtUtils::ModuleMaker->new( 
             ALT_BUILD => 'ExtUtils::ModuleMaker::TT::DBIx::Class',
             $config->getall,
